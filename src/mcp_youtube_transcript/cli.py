@@ -1,6 +1,7 @@
 #  cli.py
 #
 #  Copyright (c) 2025 Junpei Kawamoto
+#  Copyright (c) 2026 Ryusei Matsui
 #
 #  This software is released under the MIT License.
 #
@@ -9,7 +10,7 @@ import logging
 
 import click
 
-from mcp_youtube_transcript import server
+from mcp_youtube_transcript import DEFAULT_STORAGE_PATH, server
 
 
 @click.command()
@@ -18,6 +19,14 @@ from mcp_youtube_transcript import server
     type=int,
     help="Maximum number of characters each response contains. Set a negative value to disable pagination.",
     default=50000,
+)
+@click.option(
+    "--storage-path",
+    type=click.Path(path_type=str),
+    envvar="MCP_YOUTUBE_TRANSCRIPT_DB",
+    default=str(DEFAULT_STORAGE_PATH),
+    show_default=True,
+    help="SQLite database used to cache and search transcripts.",
 )
 @click.option(
     "--webshare-proxy-username",
@@ -36,16 +45,22 @@ from mcp_youtube_transcript import server
 @click.version_option()
 def main(
     response_limit: int | None,
+    storage_path: str,
     webshare_proxy_username: str | None,
     webshare_proxy_password: str | None,
     http_proxy: str | None,
     https_proxy: str | None,
 ) -> None:
     """YouTube Transcript MCP server."""
-
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-
     logger.info("starting Youtube Transcript MCP server")
-    server(response_limit, webshare_proxy_username, webshare_proxy_password, http_proxy, https_proxy).run()
+    server(
+        response_limit,
+        webshare_proxy_username,
+        webshare_proxy_password,
+        http_proxy,
+        https_proxy,
+        storage_path,
+    ).run()
     logger.info("closed Youtube Transcript MCP server")
