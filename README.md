@@ -1,138 +1,153 @@
-# YouTube Transcript MCP Server
+# YouTube Transcript MCP Server — Video Context Fork
 
-[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
-[![Python Application](https://github.com/jkawamoto/mcp-youtube-transcript/actions/workflows/python-app.yaml/badge.svg)](https://github.com/jkawamoto/mcp-youtube-transcript/actions/workflows/python-app.yaml)
-[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
-[![GitHub License](https://img.shields.io/github/license/jkawamoto/mcp-youtube-transcript)](https://github.com/jkawamoto/mcp-youtube-transcript/blob/main/LICENSE)
-[![Dockerhub](https://img.shields.io/badge/Docker-mcp%2Fyoutube--transcript-blue.svg)](https://hub.docker.com/mcp/server/youtube_transcript)
+[日本語 README](README.ja.md)
 
+This repository is a fork of `jkawamoto/mcp-youtube-transcript`, licensed under the MIT License. The original transcript retrieval behavior is retained while this fork adds a local, searchable video-context layer intended for Codex, Antigravity, GitHub Copilot, and other MCP clients.
 
-This MCP server retrieves transcripts for given YouTube video URLs.
+## Current development status
+
+Branch: `agent/video-context-v0.1`
+
+### Implemented
+
+- Existing transcript tools remain available.
+- SQLite-backed local transcript cache.
+- SQLite FTS5 full-text search; no external vector database required.
+- Transcript chunking by approximate time window (default: 90 seconds).
+- Re-ingesting a video replaces its cached transcript.
+- MCP tools for ingesting, searching, retrieving a time range, listing cached videos, and removing cached videos.
+- Configurable database path through `--storage-path` or `MCP_YOUTUBE_TRANSCRIPT_DB`.
+- Initial unit tests for the storage/search layer.
+
+### Not implemented yet
+
+- Audio fallback for videos where usable subtitles cannot be retrieved.
+- `ffmpeg` integration.
+- Speech-to-text fallback.
+- Scene-change detection and on-demand frame extraction.
+- Vision analysis of video frames.
+- Embedding or hybrid FTS + semantic search.
+- Channel/playlist ingestion.
+- Production validation across Codex, Antigravity, and GitHub Copilot.
+
+### Next planned work
+
+1. Run the complete upstream test suite and fix compatibility regressions.
+2. Add MCP-level tests for the new tools.
+3. Validate installation/configuration with Codex, Antigravity, and GitHub Copilot.
+4. Add timestamp-friendly result URLs and better search result formatting.
+5. Add subtitle-missing fallback using local media/audio processing where permitted.
 
 ## Tools
-This MCP server provides the following tools:
 
-### `get_transcript`
-Fetches the transcript of a specified YouTube video.
+### Original tools
 
-#### Parameters
-- **url** *(string)*: The full URL of the YouTube video. This field is required.
-- **lang** *(string, optional)*: The desired language for the transcript. Defaults to `en` if not specified.
-- **next_cursor** *(string, optional)*: Cursor to retrieve the next page of the transcript.
+- `get_transcript(url, lang?, next_cursor?)`
+- `get_timed_transcript(url, lang?, next_cursor?)`
+- `get_video_info(url)`
+- `get_available_languages(url)`
 
-### `get_timed_transcript`
-Fetches the transcript of a specified YouTube video with timestamps.
+### Video context tools added by this fork
 
-#### Parameters
-- **url** *(string)*: The full URL of the YouTube video. This field is required.
-- **lang** *(string, optional)*: The desired language for the transcript. Defaults to `en` if not specified.
-- **next_cursor** *(string, optional)*: Cursor to retrieve the next page of the transcript.
+#### `ingest_video`
+Fetches a timed transcript and stores it in the local SQLite cache.
 
-### `get_video_info`
-Fetches the metadata of a specified YouTube video.
+Parameters:
+- `url`: YouTube video URL.
+- `lang`: Preferred transcript language. Default: `en`.
+- `chunk_seconds`: Approximate maximum chunk duration. Default: `90`.
 
-#### Parameters
-- **url** *(string)*: The full URL of the YouTube video. This field is required.
+#### `search_video`
+Searches cached transcript chunks using SQLite FTS5.
 
-### `get_available_languages`
-Retrieves the available languages for the video.
+Parameters:
+- `query`: Full-text search query.
+- `video_id`: Optional YouTube video ID filter.
+- `limit`: Maximum result count. Default: `5`.
 
-#### Parameters
-- **url** *(string)*: The full URL of the YouTube video. This field is required.
+Results include video ID, title, source URL, start/end timestamps, text, and FTS rank.
 
-## Installation
-> [!NOTE]
-> You'll need [`uv`](https://docs.astral.sh/uv) installed on your system to use `uvx` command.
+#### `get_segment`
+Returns cached transcript chunks overlapping a requested time range.
 
-### For [goose](https://block.github.io/goose/)
-Please refer to this tutorial for detailed installation instructions:
-[YouTube Transcript Extension](https://block.github.io/goose/docs/mcp/youtube-transcript-mcp).
+#### `list_cached_videos`
+Lists videos currently stored in the local database.
 
-### For [Claude](https://claude.com/download)
+#### `remove_cached_video`
+Removes one video and its transcript chunks from the cache.
 
-Download the latest MCP bundle `mcp-youtube-transcript.mcpb` from
-the [Releases](https://github.com/jkawamoto/mcp-youtube-transcript/releases) page,
-then open the downloaded `.mcpb `file or drag it into the Claude Desktop's Settings window.
+## Storage
 
-<details>
-<summary>Manually configuration</summary>
+The default database is:
 
-You can also manually configure this server for Claude Desktop.
-Edit the `claude_desktop_config.json` file by adding the following entry under
-`mcpServers`:
+```text
+~/.cache/mcp-youtube-transcript/transcripts.db
+```
+
+Override it with:
+
+```bash
+mcp-youtube-transcript --storage-path /path/to/transcripts.db
+```
+
+or:
+
+```bash
+export MCP_YOUTUBE_TRANSCRIPT_DB=/path/to/transcripts.db
+```
+
+Because the database is local, multiple MCP clients on the same machine can point to the same file and share an ingested video library.
+
+## Example MCP configuration
+
+During development, point the MCP client at this fork/branch:
 
 ```json
 {
   "mcpServers": {
-    "youtube-transcript": {
+    "youtube-video-context": {
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/jkawamoto/mcp-youtube-transcript",
+        "git+https://github.com/MatsuiRyusei/mcp-youtube-transcript@agent/video-context-v0.1",
         "mcp-youtube-transcript"
       ]
     }
   }
 }
 ```
-After editing, restart the application.
 
-</details>
+The exact configuration location differs between MCP clients.
 
-For more information,
-see: [Connect to local MCP servers - Model Context Protocol.](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
+## Design direction
 
-### For [LM Studio](https://lmstudio.ai/)
-To configure this server for LM Studio, click the button below.
+The intended architecture is audio/text first and vision on demand:
 
-[![Add MCP Server youtube-transcript to LM Studio](https://files.lmstudio.ai/deeplink/mcp-install-light.svg)](https://lmstudio.ai/install-mcp?name=youtube-transcript&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyItLWZyb20iLCJnaXQraHR0cHM6Ly9naXRodWIuY29tL2prYXdhbW90by9tY3AteW91dHViZS10cmFuc2NyaXB0IiwibWNwLXlvdXR1YmUtdHJhbnNjcmlwdCJdfQ%3D%3D)
+```text
+YouTube URL
+  -> usable transcript when available
+  -> timed chunks
+  -> SQLite + FTS5
+  -> only relevant chunks returned to the LLM
 
-### Using Docker
+If transcript retrieval is unavailable (future work):
+  -> permitted local media/audio source
+  -> ffmpeg audio extraction
+  -> speech-to-text
+  -> same SQLite index
 
-A Docker image for this server is available on [Docker Hub](https://hub.docker.com/mcp/server/youtube_transcript/).
-Please refer to the Docker Hub page for detailed usage instructions and documentation.
-
-## Response Pagination
-When retrieving transcripts for longer videos, the content may exceed the token size limits of the LLM.
-To avoid this issue, this server splits transcripts that exceed 50,000 characters.
-If a transcript is split, the response will include a `next_cursor`.
-To retrieve the next part, include this `next_cursor` value in your request.
-
-The token size limits vary depending on the LLM and language you are using.
-If you need to split responses into smaller chunks,
-you can adjust this using the `--response-limit` command line argument.
-For example, the configuration below splits responses to contain no more than 15,000 characters each:
-
-```json
-{
-  "mcpServers": {
-    "youtube-transcript": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/jkawamoto/mcp-youtube-transcript",
-        "mcp-youtube-transcript",
-        "--response-limit",
-        "15000"
-      ]
-    }
-  }
-}
+If visual context is required (future work):
+  -> inspect only the relevant time range
+  -> scene/frame extraction
+  -> vision analysis on demand
 ```
 
-## Using Proxy Servers
-In environments where access to YouTube is restricted, you can use proxy servers.
+This keeps model context usage low instead of sending entire long transcripts or videos on every question.
 
-When using [Webshare](https://www.webshare.io/), set the username and password for the Residential Proxy using either
-the environment variables `WEBSHARE_PROXY_USERNAME` and `WEBSHARE_PROXY_PASSWORD`,
-or the command line arguments `--webshare-proxy-username` and `--webshare-proxy-password`.
+## Development notes
 
-When using other proxy servers, set the proxy server URL using either the environment variables `HTTP_PROXY` or
-`HTTPS_PROXY`, or the command line arguments `--http-proxy` or `--https-proxy`.
+The fork intentionally avoids adding a vector database in v0.1. Python's standard `sqlite3` module and SQLite FTS5 are used first so the MCP remains easy to install and portable. Embeddings can be added later if lexical search proves insufficient.
 
-For more details, please visit:
-[Working around IP bans - YouTube Transcript API](https://github.com/jdepoix/youtube-transcript-api?tab=readme-ov-file#working-around-ip-bans-requestblocked-or-ipblocked-exception).
+## License and attribution
 
-## License
-
-This application is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+This project remains under the MIT License. Original copyright and license notices from Junpei Kawamoto are preserved in inherited source files. New fork-specific code includes its own copyright notice while remaining under the same MIT License.
